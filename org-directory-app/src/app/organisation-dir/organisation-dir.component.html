@@ -1,1 +1,142 @@
-<p>organisation-dir works!</p>
+<main class="directory-shell">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">{{ t.app.eyebrow }}</p>
+      <h1>{{ t.app.title }}</h1>
+      <p class="subtitle">{{ t.app.subtitle }}</p>
+    </div>
+    <button class="button button-primary" type="button" (click)="openCreate()">{{ t.actions.addOrganisation }}</button>
+  </header>
+
+  <section class="toolbar" [attr.aria-label]="t.filters.searchLabel">
+    <div class="field toolbar-field">
+      <label for="directory-search">{{ t.filters.searchLabel }}</label>
+      <input id="directory-search" type="search" [value]="searchInput()" [placeholder]="t.filters.searchPlaceholder" (input)="onSearchInput($event)" />
+    </div>
+    <div class="field toolbar-field">
+      <label for="status-filter">{{ t.filters.statusLabel }}</label>
+      <select id="status-filter" [value]="statusFilter()" (change)="onStatusChange($event)">
+        <option value="all">{{ t.filters.allStatuses }}</option>
+        @for (status of allStatuses; track status) {
+          <option [value]="status">{{ statusLabel(status) }}</option>
+        }
+      </select>
+    </div>
+    <button class="button button-secondary" type="button" (click)="clearFilters()">{{ t.actions.clearFilters }}</button>
+  </section>
+
+  @if (!loading() && !error()) {
+    <p class="result-count" aria-live="polite">{{ resultSummary() }}</p>
+  }
+
+  <section class="directory-panel" [attr.aria-busy]="loading()">
+    @if (loading()) {
+      <div class="state-panel" role="status">
+        <span class="state-icon" aria-hidden="true">…</span>
+        <h2>{{ t.states.loadingTitle }}</h2>
+        <p>{{ t.states.loadingBody }}</p>
+      </div>
+    } @else if (error()) {
+      <div class="state-panel state-panel-error" role="alert">
+        <span class="state-icon" aria-hidden="true">!</span>
+        <h2>{{ t.states.errorTitle }}</h2>
+        <p>{{ t.states.errorBody }}</p>
+        <button class="button button-primary" type="button" (click)="loadDirectory()">{{ t.actions.retry }}</button>
+      </div>
+    } @else if (filteredOrganisations().length === 0) {
+      <div class="state-panel">
+        <span class="state-icon" aria-hidden="true">−</span>
+        <h2>{{ t.states.emptyTitle }}</h2>
+        <p>{{ t.states.emptyBody }}</p>
+        <button class="button button-secondary" type="button" (click)="clearFilters()">{{ t.actions.clearFilters }}</button>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                <button class="sort-button" type="button" (click)="toggleSort('name')" [attr.aria-label]="sortField() === 'name' && sortDirection() === 'asc' ? t.table.sortDescending : t.table.sortAscending">
+                  {{ t.table.name }} <span aria-hidden="true">{{ sortField() === 'name' && sortDirection() === 'asc' ? '↑' : '↓' }}</span>
+                </button>
+              </th>
+              <th scope="col">{{ t.table.status }}</th>
+              <th scope="col">{{ t.table.members }}</th>
+              <th scope="col">{{ t.table.owner }}</th>
+              <th scope="col">
+                <button class="sort-button" type="button" (click)="toggleSort('createdAt')" [attr.aria-label]="sortField() === 'createdAt' && sortDirection() === 'asc' ? t.table.sortDescending : t.table.sortAscending">
+                  {{ t.table.created }} <span aria-hidden="true">{{ sortField() === 'createdAt' && sortDirection() === 'asc' ? '↑' : '↓' }}</span>
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (organisation of filteredOrganisations(); track organisation.rowId) {
+              <tr>
+                <td class="name-cell">
+                  <span class="organisation-name">{{ organisation.name }}</span>
+                  @if (organisation.hasDataIssue) {
+                    <span class="data-issue" [attr.aria-label]="t.table.dataRepaired">!</span>
+                  }
+                </td>
+                <td>
+                  <span class="status" [class]="'status status-' + organisation.status">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span>{{ statusLabel(organisation.status) }}</span>
+                  </span>
+                </td>
+                <td>{{ organisation.memberCount.toLocaleString(t.date.locale) }}</td>
+                <td>{{ organisation.ownerEmail ?? t.table.unknownOwner }}</td>
+                <td>{{ formatDate(organisation.createdAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</main>
+
+@if (createOpen()) {
+  <div class="dialog-backdrop" (click)="closeCreate()">
+    <section class="create-dialog" role="dialog" aria-modal="true" [attr.aria-label]="t.form.title" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <div>
+          <h2>{{ t.form.title }}</h2>
+          <p>{{ t.form.intro }}</p>
+        </div>
+        <button class="icon-button" type="button" [attr.aria-label]="t.actions.close" (click)="closeCreate()">×</button>
+      </header>
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="field">
+          <label for="organisation-name">{{ t.form.name }} <span class="required">{{ t.form.required }}</span></label>
+          <input id="organisation-name" type="text" [placeholder]="t.form.namePlaceholder" formControlName="name" (blur)="markTouched('name')" [attr.aria-invalid]="isInvalid('name')" aria-describedby="organisation-name-error" />
+          @if (isInvalid('name') && errorMessage('name'); as message) { <p id="organisation-name-error" class="field-error">{{ message }}</p> }
+        </div>
+        <div class="field">
+          <label for="organisation-status">{{ t.form.status }} <span class="required">{{ t.form.required }}</span></label>
+          <select id="organisation-status" formControlName="status" (blur)="markTouched('status')" [attr.aria-invalid]="isInvalid('status')" aria-describedby="organisation-status-error">
+            @for (status of statuses; track status) { <option [value]="status">{{ statusLabel(status) }}</option> }
+          </select>
+          @if (isInvalid('status') && errorMessage('status'); as message) { <p id="organisation-status-error" class="field-error">{{ message }}</p> }
+        </div>
+        <div class="field">
+          <label for="owner-email">{{ t.form.ownerEmail }} <span class="required">{{ t.form.required }}</span></label>
+          <input id="owner-email" type="email" [placeholder]="t.form.ownerEmailPlaceholder" formControlName="ownerEmail" (blur)="markTouched('ownerEmail')" [attr.aria-invalid]="isInvalid('ownerEmail')" aria-describedby="owner-email-error" />
+          @if (isInvalid('ownerEmail') && errorMessage('ownerEmail'); as message) { <p id="owner-email-error" class="field-error">{{ message }}</p> }
+        </div>
+        <div class="field">
+          <label for="member-count">{{ t.form.memberCount }}</label>
+          <input id="member-count" type="number" min="0" formControlName="memberCount" (blur)="markTouched('memberCount')" [attr.aria-invalid]="isInvalid('memberCount')" aria-describedby="member-count-hint member-count-error" />
+          <p id="member-count-hint" class="field-hint">{{ t.form.memberCountHint }}</p>
+          @if (isInvalid('memberCount') && errorMessage('memberCount'); as message) { <p id="member-count-error" class="field-error">{{ message }}</p> }
+        </div>
+        <footer class="dialog-actions">
+          <button class="button button-secondary" type="button" (click)="closeCreate()">{{ t.actions.cancel }}</button>
+          <button class="button button-primary" type="submit" [disabled]="submitting()">{{ submitting() ? t.actions.creating : t.actions.create }}</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+}
